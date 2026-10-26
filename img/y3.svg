@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="1024" height="1024">
+  <title>Y³ Studio</title>
+  <mask id="y"><rect width="200" height="200" fill="#fff"/>
+    <polyline points="30.72,60.00 100.00,100.00 169.28,60.00" fill="none" stroke="#000" stroke-width="9" stroke-linejoin="round"/>
+    <line x1="100" y1="100" x2="100" y2="180" stroke="#000" stroke-width="9"/></mask>
+  <g mask="url(#y)">
+    <polygon points="100.00,20.00 169.28,60.00 100.00,100.00 30.72,60.00" fill="#c9cdd3"/>
+    <polygon points="169.28,60.00 169.28,140.00 100.00,180.00 100.00,100.00" fill="#6b727c"/>
+    <polygon points="30.72,60.00 100.00,100.00 100.00,180.00 30.72,140.00" fill="#20252b"/>
+  </g>
+</svg>
