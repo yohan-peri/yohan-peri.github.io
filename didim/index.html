@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="DIDIM 계단 계산기 — 층고만 넣으면 단수·단높이·단너비와 개구부를 계산하고 손스케치 평면·단면으로 보여 줍니다.">
+<link rel="icon" href="../img/didim.png">
+<style>[hidden]{display:none!important}body{margin:0}</style>
+</head>
+<body>
+<title>DIDIM 계단 계산기</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Nanum+Pen+Script&display=swap">
+<style>
+/* 레이아웃: 왼쪽 입력 · 결과표 / 오른쪽 큰 단면 스케치 (좁으면 한 줄로 쌓임). 흑백 미니멀, 입력 칸만 옅은 회색 */
+:root {
+  --bg: #FFFFFF; --fg: #111111; --sub: #6B6B6B; --faint: #9A9A9A;
+  --line: #E5E5E5; --hair: #F0F0F0; --input: #F1F1EF; --mass: #EDEDED;
+  --dash: #8A8A8A; --dim: #555555; --bad: #B3261E; --onfg: #FFFFFF;
+  --sans: "Noto Sans KR", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --hand: "Nanum Pen Script", "Noto Sans KR", cursive;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #141414; --fg: #EDEDEA; --sub: #A3A3A0; --faint: #7A7A77;
+  --line: #2E2E2C; --hair: #242423; --input: #232322; --mass: #2B2B29;
+  --dash: #8C8C89; --dim: #B5B5B2; --bad: #F2786A; --onfg: #141414; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #141414; --fg: #EDEDEA; --sub: #A3A3A0; --faint: #7A7A77;
+  --line: #2E2E2C; --hair: #242423; --input: #232322; --mass: #2B2B29;
+  --dash: #8C8C89; --dim: #B5B5B2; --bad: #F2786A; --onfg: #141414; color-scheme: dark }
+
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 14px; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; padding-bottom: 20px; border-bottom: 1px solid var(--fg); }
+.brand small { display: block; font-size: 12px; letter-spacing: 2px; color: var(--sub); }
+.brand h1 { margin: 6px 0 0; font-size: 28px; font-weight: 700; text-wrap: balance; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tabs, .seg { display: flex; border: 1px solid var(--fg); border-radius: 4px; overflow: hidden; }
+.tabs button, .seg button { padding: 7px 14px; min-height: 34px; font-size: 13px; }
+.tabs button[aria-pressed="true"], .seg button[aria-pressed="true"] { background: var(--fg); color: var(--onfg); }
+.chip { padding: 0 12px; min-height: 34px; border: 1px solid var(--line); border-radius: 17px; font-size: 13px; }
+
+.grid { display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); gap: 40px; padding-top: 28px; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); gap: 24px; } }
+.col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+
+.rowhead { display: flex; justify-content: space-between; align-items: center; }
+.rowhead h2 { margin: 0; font-size: 20px; font-weight: 700; }
+.step { display: flex; align-items: center; gap: 4px; min-height: 52px; border-bottom: 1px solid var(--hair); }
+.step .lab { flex: 1; min-width: 0; color: var(--sub); font-size: 14px; }
+.step .lab small { display: block; font-size: 11px; color: var(--faint); }
+.step .pm { width: 40px; height: 40px; font-size: 20px; border-radius: 8px; }
+.step .pm:disabled { color: var(--line); cursor: default; }
+.step .val { display: flex; align-items: center; justify-content: center; gap: 4px; width: 128px; height: 40px; background: var(--input); border-radius: 8px; border: 1px solid transparent; }
+.step .val:focus-within { border-color: var(--fg); }
+.step input { width: 64px; border: 0; background: transparent; color: var(--fg); font: inherit; font-size: 17px; text-align: right; outline: none; font-variant-numeric: tabular-nums; }
+.step .unit { color: var(--sub); font-size: 13px; min-width: 22px; }
+.link { align-self: flex-start; font-size: 12px; color: var(--sub); text-decoration: underline; min-height: 32px; }
+.err { color: var(--bad); font-size: 13px; }
+
+.summary { display: flex; flex-direction: column; gap: 2px; padding: 18px 0; border-top: 1px solid var(--fg); border-bottom: 1px solid var(--line); }
+.summary b { font-size: 44px; letter-spacing: -1px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.summary span { font-size: 15px; font-variant-numeric: tabular-nums; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+td { padding: 11px 0; border-bottom: 1px solid var(--hair); }
+td.v { text-align: right; color: var(--sub); padding-right: 12px; }
+td.t { text-align: right; width: 82px; font-size: 12px; color: var(--faint); }
+td.t.ok { color: var(--fg); font-weight: 500; }
+td.t.bad { color: var(--bad); font-weight: 500; }
+.note { font-size: 11.5px; line-height: 1.7; color: var(--sub); max-width: 62ch; margin: 0; }
+
+.sketch { width: 100%; max-width: 100%; aspect-ratio: 334 / 250; }
+.sketch.plan { aspect-ratio: 334 / 290; }
+.getapp { display: flex; gap: 18px; align-items: center; padding: 16px 0; border-top: 1px solid var(--line); color: var(--fg); text-decoration: none; }
+.getapp .qr { flex: none; width: 96px; height: 96px; padding: 8px; background: #FFFFFF; color: #111111; border: 1px solid var(--line); border-radius: 8px; }
+.getapp .qr svg { width: 100%; height: 100%; display: block; }
+.getapp .ga-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.getapp b { font-size: 15px; }
+.getapp small { font-size: 12px; color: var(--sub); line-height: 1.5; }
+.getapp .ga-btn { align-self: flex-start; margin-top: 6px; padding: 6px 12px; border: 1px solid var(--fg); border-radius: 17px; font-size: 12px; }
+@media (max-width: 600px) { .getapp .qr { display: none; } }
+.sketch.two { aspect-ratio: auto; display: flex; flex-direction: column; gap: 8px; }
+.sketch.two svg { height: auto; aspect-ratio: 334 / 250; }
+.seg.shape { width: 100%; }
+.seg.shape button { flex: 1; }
+.seg.shape button + button { border-left: 1px solid var(--fg); }
+.views { display: flex; gap: 6px; }
+.views .chip[aria-pressed="true"] { background: var(--fg); color: var(--onfg); border-color: var(--fg); }
+.step .val.ro { justify-content: center; font-size: 17px; font-variant-numeric: tabular-nums; }
+.sketch svg { width: 100%; height: 100%; display: block; }
+.recent { display: flex; flex-direction: column; }
+.recent h3 { margin: 0 0 4px; font-size: 12px; font-weight: 400; color: var(--sub); }
+.recent button { display: flex; justify-content: space-between; gap: 12px; min-height: 38px; border-bottom: 1px solid var(--hair); text-align: left; font-variant-numeric: tabular-nums; }
+.recent button span:last-child { color: var(--sub); }
+
+.page { max-width: 720px; padding-top: 28px; display: flex; flex-direction: column; gap: 26px; }
+.hero { padding: 22px 0; border-top: 1px solid var(--fg); display: flex; flex-direction: column; gap: 12px; }
+.hero .k { font-size: 12px; color: var(--sub); }
+.hero .f { font-size: 40px; font-weight: 500; letter-spacing: -0.5px; }
+.hero p, .card p { margin: 0; line-height: 1.75; color: var(--fg); opacity: .88; max-width: 62ch; }
+.card { padding: 16px 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.card .h { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.card .h b { font-size: 15px; }
+.card .h span { color: var(--sub); font-variant-numeric: tabular-nums; }
+.card .src { font-size: 11px; color: var(--faint); }
+.code dl { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 4px 12px; margin: 0; font-size: 13px; }
+.code dt { color: var(--sub); }
+.code dd { margin: 0; }
+@media (prefers-reduced-motion: no-preference) { .sketch path { transition: d .25s ease; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="brand"><small id="eyebrow">DIDIM</small><h1 id="tagline">편안한 계단을 숫자로.</h1></div>
+    <div class="tools">
+      <div class="tabs" role="group" aria-label="화면">
+        <button id="tab-calc" aria-pressed="true"></button>
+        <button id="tab-theory" aria-pressed="false"></button>
+        <button id="tab-codes" aria-pressed="false"></button>
+      </div>
+      <button class="chip" id="unitBtn"></button>
+      <button class="chip" id="langBtn"></button>
+    </div>
+  </header>
+
+  <section id="v-calc" class="grid">
+    <div class="col">
+      <div class="rowhead">
+        <h2 id="calcTitle"></h2>
+        <div class="seg" role="group"><button id="m-auto"></button><button id="m-manual"></button></div>
+      </div>
+      <div class="seg shape" role="group" aria-label="계단 형태"><button id="s-straight"></button><button id="s-l"></button><button id="s-u"></button></div>
+      <div id="steps"></div>
+      <p class="note" id="widthNote" style="color:var(--faint);font-size:11px;margin-top:-8px"></p>
+      <button class="link" id="advBtn"></button>
+      <div id="advSteps" hidden></div>
+      <div id="out"></div>
+    </div>
+    <div class="col">
+      <div class="views" role="group"><button class="chip" id="v-plan-btn"></button><button class="chip" id="v-sec-btn"></button><button class="chip" id="saveImg" hidden style="margin-left:auto;width:40px;padding:0;display:inline-flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10V2M5 5l3-3 3 3M4 7H3v7h10V7h-1"/></svg></button></div>
+      <div class="sketch" id="sketch"></div>
+      <div class="recent" id="recent"></div>
+      <a class="getapp" id="getapp" href="https://apps.apple.com/app/id6829382462" target="_blank" rel="noopener">
+        <span class="qr"><svg viewBox="0 0 29 29" shape-rendering="crispEdges" role="img" aria-label="App Store QR"><path d="M0 0h1v1h-1zM1 0h1v1h-1zM2 0h1v1h-1zM3 0h1v1h-1zM4 0h1v1h-1zM5 0h1v1h-1zM6 0h1v1h-1zM11 0h1v1h-1zM12 0h1v1h-1zM14 0h1v1h-1zM17 0h1v1h-1zM18 0h1v1h-1zM19 0h1v1h-1zM22 0h1v1h-1zM23 0h1v1h-1zM24 0h1v1h-1zM25 0h1v1h-1zM26 0h1v1h-1zM27 0h1v1h-1zM28 0h1v1h-1zM0 1h1v1h-1zM6 1h1v1h-1zM14 1h1v1h-1zM15 1h1v1h-1zM17 1h1v1h-1zM20 1h1v1h-1zM22 1h1v1h-1zM28 1h1v1h-1zM0 2h1v1h-1zM2 2h1v1h-1zM3 2h1v1h-1zM4 2h1v1h-1zM6 2h1v1h-1zM8 2h1v1h-1zM9 2h1v1h-1zM10 2h1v1h-1zM11 2h1v1h-1zM12 2h1v1h-1zM20 2h1v1h-1zM22 2h1v1h-1zM24 2h1v1h-1zM25 2h1v1h-1zM26 2h1v1h-1zM28 2h1v1h-1zM0 3h1v1h-1zM2 3h1v1h-1zM3 3h1v1h-1zM4 3h1v1h-1zM6 3h1v1h-1zM8 3h1v1h-1zM9 3h1v1h-1zM11 3h1v1h-1zM12 3h1v1h-1zM13 3h1v1h-1zM15 3h1v1h-1zM16 3h1v1h-1zM17 3h1v1h-1zM19 3h1v1h-1zM22 3h1v1h-1zM24 3h1v1h-1zM25 3h1v1h-1zM26 3h1v1h-1zM28 3h1v1h-1zM0 4h1v1h-1zM2 4h1v1h-1zM3 4h1v1h-1zM4 4h1v1h-1zM6 4h1v1h-1zM8 4h1v1h-1zM10 4h1v1h-1zM11 4h1v1h-1zM14 4h1v1h-1zM18 4h1v1h-1zM19 4h1v1h-1zM20 4h1v1h-1zM22 4h1v1h-1zM24 4h1v1h-1zM25 4h1v1h-1zM26 4h1v1h-1zM28 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1zM8 5h1v1h-1zM10 5h1v1h-1zM13 5h1v1h-1zM14 5h1v1h-1zM15 5h1v1h-1zM18 5h1v1h-1zM20 5h1v1h-1zM22 5h1v1h-1zM28 5h1v1h-1zM0 6h1v1h-1zM1 6h1v1h-1zM2 6h1v1h-1zM3 6h1v1h-1zM4 6h1v1h-1zM5 6h1v1h-1zM6 6h1v1h-1zM8 6h1v1h-1zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM16 6h1v1h-1zM18 6h1v1h-1zM20 6h1v1h-1zM22 6h1v1h-1zM23 6h1v1h-1zM24 6h1v1h-1zM25 6h1v1h-1zM26 6h1v1h-1zM27 6h1v1h-1zM28 6h1v1h-1zM8 7h1v1h-1zM9 7h1v1h-1zM10 7h1v1h-1zM15 7h1v1h-1zM19 7h1v1h-1zM20 7h1v1h-1zM0 8h1v1h-1zM2 8h1v1h-1zM3 8h1v1h-1zM4 8h1v1h-1zM5 8h1v1h-1zM6 8h1v1h-1zM9 8h1v1h-1zM12 8h1v1h-1zM13 8h1v1h-1zM16 8h1v1h-1zM17 8h1v1h-1zM19 8h1v1h-1zM22 8h1v1h-1zM23 8h1v1h-1zM24 8h1v1h-1zM25 8h1v1h-1zM26 8h1v1h-1zM1 9h1v1h-1zM7 9h1v1h-1zM9 9h1v1h-1zM10 9h1v1h-1zM11 9h1v1h-1zM14 9h1v1h-1zM19 9h1v1h-1zM20 9h1v1h-1zM21 9h1v1h-1zM22 9h1v1h-1zM24 9h1v1h-1zM28 9h1v1h-1zM0 10h1v1h-1zM1 10h1v1h-1zM3 10h1v1h-1zM4 10h1v1h-1zM5 10h1v1h-1zM6 10h1v1h-1zM7 10h1v1h-1zM9 10h1v1h-1zM13 10h1v1h-1zM15 10h1v1h-1zM16 10h1v1h-1zM18 10h1v1h-1zM20 10h1v1h-1zM22 10h1v1h-1zM23 10h1v1h-1zM0 11h1v1h-1zM1 11h1v1h-1zM2 11h1v1h-1zM3 11h1v1h-1zM7 11h1v1h-1zM8 11h1v1h-1zM9 11h1v1h-1zM11 11h1v1h-1zM18 11h1v1h-1zM19 11h1v1h-1zM21 11h1v1h-1zM22 11h1v1h-1zM24 11h1v1h-1zM25 11h1v1h-1zM27 11h1v1h-1zM0 12h1v1h-1zM2 12h1v1h-1zM3 12h1v1h-1zM4 12h1v1h-1zM6 12h1v1h-1zM7 12h1v1h-1zM8 12h1v1h-1zM9 12h1v1h-1zM10 12h1v1h-1zM11 12h1v1h-1zM15 12h1v1h-1zM16 12h1v1h-1zM17 12h1v1h-1zM23 12h1v1h-1zM25 12h1v1h-1zM26 12h1v1h-1zM0 13h1v1h-1zM1 13h1v1h-1zM3 13h1v1h-1zM8 13h1v1h-1zM13 13h1v1h-1zM19 13h1v1h-1zM20 13h1v1h-1zM21 13h1v1h-1zM22 13h1v1h-1zM23 13h1v1h-1zM24 13h1v1h-1zM28 13h1v1h-1zM0 14h1v1h-1zM1 14h1v1h-1zM2 14h1v1h-1zM3 14h1v1h-1zM4 14h1v1h-1zM5 14h1v1h-1zM6 14h1v1h-1zM9 14h1v1h-1zM11 14h1v1h-1zM13 14h1v1h-1zM14 14h1v1h-1zM15 14h1v1h-1zM16 14h1v1h-1zM18 14h1v1h-1zM21 14h1v1h-1zM24 14h1v1h-1zM25 14h1v1h-1zM26 14h1v1h-1zM0 15h1v1h-1zM1 15h1v1h-1zM5 15h1v1h-1zM11 15h1v1h-1zM12 15h1v1h-1zM13 15h1v1h-1zM15 15h1v1h-1zM18 15h1v1h-1zM19 15h1v1h-1zM20 15h1v1h-1zM24 15h1v1h-1zM27 15h1v1h-1zM0 16h1v1h-1zM1 16h1v1h-1zM3 16h1v1h-1zM4 16h1v1h-1zM6 16h1v1h-1zM10 16h1v1h-1zM11 16h1v1h-1zM12 16h1v1h-1zM14 16h1v1h-1zM16 16h1v1h-1zM17 16h1v1h-1zM18 16h1v1h-1zM19 16h1v1h-1zM23 16h1v1h-1zM25 16h1v1h-1zM26 16h1v1h-1zM0 17h1v1h-1zM4 17h1v1h-1zM5 17h1v1h-1zM7 17h1v1h-1zM11 17h1v1h-1zM17 17h1v1h-1zM18 17h1v1h-1zM19 17h1v1h-1zM22 17h1v1h-1zM23 17h1v1h-1zM24 17h1v1h-1zM26 17h1v1h-1zM28 17h1v1h-1zM0 18h1v1h-1zM2 18h1v1h-1zM4 18h1v1h-1zM6 18h1v1h-1zM7 18h1v1h-1zM8 18h1v1h-1zM10 18h1v1h-1zM12 18h1v1h-1zM15 18h1v1h-1zM17 18h1v1h-1zM20 18h1v1h-1zM21 18h1v1h-1zM24 18h1v1h-1zM26 18h1v1h-1zM0 19h1v1h-1zM2 19h1v1h-1zM3 19h1v1h-1zM5 19h1v1h-1zM7 19h1v1h-1zM9 19h1v1h-1zM11 19h1v1h-1zM14 19h1v1h-1zM20 19h1v1h-1zM21 19h1v1h-1zM24 19h1v1h-1zM27 19h1v1h-1zM0 20h1v1h-1zM6 20h1v1h-1zM8 20h1v1h-1zM9 20h1v1h-1zM11 20h1v1h-1zM12 20h1v1h-1zM15 20h1v1h-1zM16 20h1v1h-1zM17 20h1v1h-1zM20 20h1v1h-1zM21 20h1v1h-1zM22 20h1v1h-1zM23 20h1v1h-1zM24 20h1v1h-1zM26 20h1v1h-1zM27 20h1v1h-1zM28 20h1v1h-1zM8 21h1v1h-1zM10 21h1v1h-1zM13 21h1v1h-1zM14 21h1v1h-1zM17 21h1v1h-1zM18 21h1v1h-1zM20 21h1v1h-1zM24 21h1v1h-1zM25 21h1v1h-1zM26 21h1v1h-1zM27 21h1v1h-1zM28 21h1v1h-1zM0 22h1v1h-1zM1 22h1v1h-1zM2 22h1v1h-1zM3 22h1v1h-1zM4 22h1v1h-1zM5 22h1v1h-1zM6 22h1v1h-1zM9 22h1v1h-1zM13 22h1v1h-1zM14 22h1v1h-1zM15 22h1v1h-1zM18 22h1v1h-1zM19 22h1v1h-1zM20 22h1v1h-1zM22 22h1v1h-1zM24 22h1v1h-1zM25 22h1v1h-1zM26 22h1v1h-1zM0 23h1v1h-1zM6 23h1v1h-1zM8 23h1v1h-1zM10 23h1v1h-1zM13 23h1v1h-1zM15 23h1v1h-1zM19 23h1v1h-1zM20 23h1v1h-1zM24 23h1v1h-1zM28 23h1v1h-1zM0 24h1v1h-1zM2 24h1v1h-1zM3 24h1v1h-1zM4 24h1v1h-1zM6 24h1v1h-1zM8 24h1v1h-1zM10 24h1v1h-1zM14 24h1v1h-1zM16 24h1v1h-1zM17 24h1v1h-1zM20 24h1v1h-1zM21 24h1v1h-1zM22 24h1v1h-1zM23 24h1v1h-1zM24 24h1v1h-1zM26 24h1v1h-1zM0 25h1v1h-1zM2 25h1v1h-1zM3 25h1v1h-1zM4 25h1v1h-1zM6 25h1v1h-1zM8 25h1v1h-1zM10 25h1v1h-1zM12 25h1v1h-1zM18 25h1v1h-1zM23 25h1v1h-1zM25 25h1v1h-1zM26 25h1v1h-1zM27 25h1v1h-1zM28 25h1v1h-1zM0 26h1v1h-1zM2 26h1v1h-1zM3 26h1v1h-1zM4 26h1v1h-1zM6 26h1v1h-1zM8 26h1v1h-1zM9 26h1v1h-1zM15 26h1v1h-1zM19 26h1v1h-1zM20 26h1v1h-1zM22 26h1v1h-1zM23 26h1v1h-1zM24 26h1v1h-1zM25 26h1v1h-1zM26 26h1v1h-1zM27 26h1v1h-1zM0 27h1v1h-1zM6 27h1v1h-1zM10 27h1v1h-1zM12 27h1v1h-1zM16 27h1v1h-1zM18 27h1v1h-1zM20 27h1v1h-1zM21 27h1v1h-1zM23 27h1v1h-1zM24 27h1v1h-1zM25 27h1v1h-1zM27 27h1v1h-1zM0 28h1v1h-1zM1 28h1v1h-1zM2 28h1v1h-1zM3 28h1v1h-1zM4 28h1v1h-1zM5 28h1v1h-1zM6 28h1v1h-1zM8 28h1v1h-1zM9 28h1v1h-1zM10 28h1v1h-1zM11 28h1v1h-1zM14 28h1v1h-1zM15 28h1v1h-1zM16 28h1v1h-1zM17 28h1v1h-1zM18 28h1v1h-1zM19 28h1v1h-1zM21 28h1v1h-1zM24 28h1v1h-1zM26 28h1v1h-1z" fill="currentColor"/></svg></span>
+        <span class="ga-text"><b id="gaTitle"></b><small id="gaSub"></small><span class="ga-btn" id="gaBtn"></span></span>
+      </a>
+    </div>
+  </section>
+
+  <section id="v-theory" class="page" hidden></section>
+  <section id="v-codes" class="page" hidden></section>
+</div>
+
+<script>
+(() => {
+  // ---------- 상태 ----------
+  const DEF = { H: 3400, floor: 1000, mode: 'auto', adj: 0, nM: 20, lM: 290, hr: 2100, li: 3000, ll: 1200,
+    shape: 'straight', w: 1200, gap: 100, split: 0, view: null,
+    lang: (navigator.language || 'ko').startsWith('ko') ? 'ko' : 'en', imp: false, tab: 'calc', adv: false, recent: [] };
+  let S = Object.assign({}, DEF);
+  try { const saved = JSON.parse(localStorage.getItem('didim-web') || 'null'); if (saved) S = Object.assign(S, saved); } catch (e) {}
+  const save = () => { try { localStorage.setItem('didim-web', JSON.stringify(S)); } catch (e) {} };
+  const L = (ko, en) => S.lang === 'en' ? en : ko;
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- 계산 (앱과 같은 식) ----------
+  const STRIDE = [590, 650], ANG = [22, 45];
+  const autoBase = (H) => Math.max(2, Math.round(H / 170));
+  const autoBounds = (H) => { const lo = Math.max(2, Math.ceil(H / 250)); return [lo, Math.max(lo, Math.floor(H / 100))]; };
+  const manBounds = (H) => { const lo = Math.max(2, Math.ceil(H / 300)); return [lo, Math.max(lo, Math.min(80, Math.floor(H / 80)))]; };
+  const autoTread = (h) => Math.min(500, Math.max(200, Math.ceil((630 - 2 * h) / 5 - 1e-9) * 5));
+  const splitSteps = (n, sp) => { const n1 = Math.min(n - 2, Math.max(2, Math.floor((n + 1) / 2) + sp)); return [n1, n - n1]; };
+  const autoSteps = () => { const b = autoBounds(S.H); return Math.min(b[1], Math.max(b[0], autoBase(S.H) + S.adj)); };
+
+  function solve() {
+    const H = S.H;
+    if (!(H >= 300 && H <= 10000)) return { err: L('층고는 300~10,000 mm 사이로 입력하세요.', 'Enter a floor height between 300 and 10,000 mm.') };
+    if (!(S.floor >= 0 && S.floor < H)) return { err: L('바닥 총두께는 층고보다 작아야 합니다.', 'The floor build-up must be less than the floor height.') };
+    let n, h, l;
+    if (S.mode === 'manual') {
+      n = Math.round(S.nM); l = S.lM;
+      if (!(n >= 2 && n <= 80)) return { err: L('단수는 2~80 사이로 입력하세요.', 'Enter between 2 and 80 steps.') };
+      h = H / n;
+      if (!(h >= 80 && h <= 300)) return { err: L('단높이가 ' + h.toFixed(1) + ' mm입니다. 단수를 조정하세요.', 'Riser is ' + h.toFixed(1) + ' mm. Adjust the number of steps.') };
+      if (!(l >= 150 && l <= 600)) return { err: L('단너비는 150~600 mm 사이로 입력하세요.', 'Enter a tread between 150 and 600 mm.') };
+    } else { n = autoSteps(); h = H / n; l = autoTread(h); }
+    const every = Math.max(500, S.li), W0 = Math.max(300, S.w), GAP = Math.max(0, S.gap);
+    let LAND = Math.max(300, S.ll || 1200);
+    let landings = 0, after = new Set(), starts = [1], n1 = n, n2 = 0;
+    if (S.shape === 'straight') {
+      while (landings < n - 1 && Math.floor((n + landings) / (landings + 1)) * h > every + 0.5) landings++;
+      let cum = 0;
+      for (let j = 0; j < landings; j++) { cum += Math.floor(n / (landings + 1)) + (j < n % (landings + 1) ? 1 : 0); after.add(cum); starts.push(cum + 1); }
+    } else {
+      // 꺾이는 곳에 계단참 하나 (ㄱ자는 폭 × 폭, U자는 입력한 길이)
+      if (n < 4) return { err: L('꺾인 계단은 4단 이상이어야 합니다. 층고나 단수를 늘리세요.', 'A turning stair needs at least 4 steps. Increase the height or steps.') };
+      [n1, n2] = splitSteps(n, S.split);
+      landings = 1; after = new Set([n1]); starts = [1, n1 + 1];
+      if (S.shape === 'l') LAND = W0;
+    }
+    const rx = new Array(n + 1).fill(0);
+    for (let i = 1; i < n; i++) rx[i + 1] = rx[i] + (after.has(i) ? LAND : l);
+    const run = rx[n];
+    const prof = [[0, 0]];
+    for (let i = 1; i <= n; i++) { prof.push([rx[i], i * h]); if (after.has(i)) prof.push([rx[i + 1], i * h]); }
+    const thr = H - S.floor - S.hr; let xc = run;
+    if (thr < 0) xc = 0; else for (let k = 1; k < prof.length; k++) {
+      const a = prof[k - 1], b = prof[k];
+      if (b[1] > a[1] && thr >= a[1] && thr <= b[1]) { xc = a[0] + (thr - a[1]) / (b[1] - a[1]) * (b[0] - a[0]); break; }
+    }
+    const ends = starts.slice(1).map((x) => x - 1).concat([n]);
+    const maxRise = Math.max(...starts.map((st, k) => ends[k] - st + 1)) * h;
+    const runA = Math.max(0, n1 - 1) * l, runB = Math.max(0, n2 - 1) * l;
+    let fW, fL;
+    if (S.shape === 'straight') { fW = run; fL = W0; }
+    else if (S.shape === 'l') { fW = runA + W0; fL = W0 + runB; }
+    else { fW = 2 * W0 + GAP; fL = Math.max(runA, runB) + LAND; }
+    return { H, n, h, l, landings, after, starts, rx, prof, run, xc, opening: Math.max(0, run - xc),
+      stride: 2 * h + l, conv: l - h, safe: l + h, ang: Math.atan(h / l) * 180 / Math.PI,
+      shape: S.shape, n1, n2, w: W0, gap: S.shape === 'u' ? GAP : 0, turn: S.shape === 'straight' ? 0 : LAND,
+      runA, runB, fW, fL, maxRise, over: maxRise > every + 0.5 };
+  }
+
+  // ---------- 단위 ----------
+  const IN = 25.4;
+  const grp = (v) => Math.round(v).toLocaleString('en-US');
+  const len = (mm) => S.imp ? (mm / IN).toFixed(1) : grp(mm);
+  const fine = (mm) => S.imp ? (mm / IN).toFixed(2) : (Math.round(mm * 10) / 10).toString();
+  const sgn = (mm) => { const v = S.imp ? Math.round(mm / IN * 10) / 10 : Math.round(mm); return v === 0 ? '0' : (v > 0 ? '+' : '−') + (S.imp ? Math.abs(v).toFixed(1) : grp(Math.abs(v))); };
+  const uName = () => S.imp ? 'in' : 'mm';
+
+  // ---------- 입력 줄 ----------
+  function stepper(host, cfg) {
+    const row = document.createElement('div'); row.className = 'step';
+    row.innerHTML = '<div class="lab"></div><button class="pm" type="button">−</button><label class="val"><input type="text" inputmode="decimal" autocomplete="off"><span class="unit"></span></label><button class="pm" type="button">+</button>';
+    const [lab, minus, , plus] = row.children; const input = row.querySelector('input'); const unit = row.querySelector('.unit');
+    input.id = 'in-' + cfg.key; input.setAttribute('aria-label', cfg.key);
+    host.appendChild(row);
+    const scale = () => cfg.unitless ? 1 : (S.imp ? IN : 1);
+    const digits = () => cfg.unitless ? 0 : (S.imp ? (cfg.key === 'lM' ? 2 : 1) : 0);
+    const stepMM = () => cfg.unitless ? 1 : (S.imp ? cfg.stepIn * IN : cfg.step);
+    const show = () => { const v = cfg.get() / scale(); input.value = digits() ? v.toFixed(digits()) : String(Math.round(v)); };
+    const refresh = () => {
+      lab.innerHTML = cfg.label() + (cfg.note ? '<small>' + cfg.note() + '</small>' : '');
+      unit.textContent = cfg.unitless ? '' : uName();
+      if (document.activeElement !== input) show();
+      const v = cfg.get(), [lo, hi] = cfg.range();
+      minus.disabled = v <= lo + 1e-6; plus.disabled = v >= hi - 1e-6;
+      minus.setAttribute('aria-label', cfg.label() + ' −'); plus.setAttribute('aria-label', cfg.label() + ' +');
+    };
+    const bump = (sign) => {
+      const st = stepMM(), q = cfg.get() / st;
+      const next = sign > 0 ? (Math.floor(q + 1e-6) + 1) * st : (Math.ceil(q - 1e-6) - 1) * st;
+      const [lo, hi] = cfg.range(); cfg.set(Math.min(hi, Math.max(lo, next))); render();
+    };
+    minus.onclick = () => bump(-1); plus.onclick = () => bump(1);
+    input.oninput = () => { const v = parseFloat(input.value.replace(',', '.')); if (!isNaN(v)) { cfg.set(v * scale()); render(true); } };
+    input.onblur = () => { show(); };
+    input.onkeydown = (e) => { if (e.key === 'Enter') input.blur(); };
+    return refresh;
+  }
+
+  const rows = [];
+  const steps = $('steps'), adv = $('advSteps');
+  rows.push(stepper(steps, { key: 'H', label: () => L('층고', 'Floor height'), get: () => S.H, set: (v) => { S.H = v; S.adj = 0; }, step: 10, stepIn: 0.5, range: () => [300, 10000] }));
+  rows.push(stepper(steps, { key: 'floor', label: () => L('바닥 총두께', 'Floor build-up'), note: () => L('마감 + 슬래브 + 천장반자', 'Finish + slab + ceiling'), get: () => S.floor, set: (v) => { S.floor = v; }, step: 10, stepIn: 0.5, range: () => [0, 3000] }));
+  rows.push(stepper(steps, { key: 'n', unitless: true, label: () => L('단수', 'Steps'),
+    get: () => S.mode === 'manual' ? S.nM : autoSteps(),
+    set: (v) => { const n = Math.round(v); if (S.mode === 'manual') { const b = manBounds(S.H); S.nM = Math.min(b[1], Math.max(b[0], n)); } else { const b = autoBounds(S.H); S.adj = Math.min(b[1], Math.max(b[0], n)) - autoBase(S.H); } },
+    range: () => S.mode === 'manual' ? manBounds(S.H) : autoBounds(S.H) }));
+  const treadHost = document.createElement('div'); steps.appendChild(treadHost);
+  rows.push(stepper(treadHost, { key: 'lM', label: () => L('단너비', 'Tread'), get: () => S.lM, set: (v) => { S.lM = v; }, step: 5, stepIn: 0.25, range: () => [150, 600] }));
+  rows.push(stepper(steps, { key: 'w', label: () => L('계단 폭', 'Stair width'), note: () => L('안목 치수 · 난간 전', 'Clear, before handrails'), get: () => S.w, set: (v) => { S.w = v; }, step: 50, stepIn: 1, range: () => [600, 3000] }));
+  // 구간 나누기: 첫 구간 / 둘째 구간 단수 (각 2단 이상)
+  const splitRow = document.createElement('div'); splitRow.className = 'step';
+  splitRow.innerHTML = '<div class="lab"></div><button class="pm" type="button">−</button><div class="val ro"></div><button class="pm" type="button">+</button>';
+  steps.appendChild(splitRow);
+  {
+    const [lab, minus, val, plus] = splitRow.children;
+    const move = (d) => { const r = solve(); if (r.err || r.shape === 'straight') return; const n1 = Math.min(r.n - 2, Math.max(2, r.n1 + d)); S.split = n1 - Math.floor((r.n + 1) / 2); render(); };
+    minus.onclick = () => move(-1); plus.onclick = () => move(1);
+    rows.push(() => {
+      const r = solve();
+      splitRow.hidden = S.shape === 'straight' || !!r.err;
+      lab.innerHTML = L('구간 나누기', 'Split') + '<small>' + L('첫 구간 / 둘째 구간 단수', 'Steps in 1st / 2nd flight') + '</small>';
+      if (r.err || r.shape === 'straight') return;
+      val.textContent = r.n1 + ' / ' + r.n2;
+      minus.disabled = r.n1 <= 2; plus.disabled = r.n1 >= r.n - 2;
+      minus.setAttribute('aria-label', L('구간 나누기 −', 'Split −')); plus.setAttribute('aria-label', L('구간 나누기 +', 'Split +'));
+    });
+  }
+  const gapHost = document.createElement('div'); steps.appendChild(gapHost);
+  rows.push(stepper(gapHost, { key: 'gap', label: () => L('구간 사이 틈', 'Gap between flights'), note: () => L('난간 · 계단 홀', 'Handrail · stairwell void'), get: () => S.gap, set: (v) => { S.gap = v; }, step: 50, stepIn: 1, range: () => [0, 2000] }));
+  rows.push(stepper(adv, { key: 'hr', label: () => L('유효높이', 'Headroom'), note: () => L('계단 위 머리 공간', 'Clear height above stairs'), get: () => S.hr, set: (v) => { S.hr = v; }, step: 10, stepIn: 1, range: () => [1500, 3000] }));
+  rows.push(stepper(adv, { key: 'li', label: () => L('계단참 간격', 'Landing every'), note: () => L('이 높이마다 계단참', 'Max rise per flight'), get: () => S.li, set: (v) => { S.li = v; }, step: 100, stepIn: 1, range: () => [500, 10000] }));
+  const llHost = document.createElement('div'); adv.appendChild(llHost);
+  rows.push(stepper(llHost, { key: 'll', label: () => L('계단참 길이', 'Landing length'), note: () => L('진행 방향 안목 · 난간 전', 'Clear depth, before handrails'), get: () => S.ll, set: (v) => { S.ll = v; }, step: 100, stepIn: 1, range: () => [600, 5000] }));
+
+  // ---------- 단면 스케치 ----------
+  const f = (v) => v.toFixed(1);
+  const pts = (a) => a.map((p, i) => (i ? 'L' : 'M') + f(p[0]) + ' ' + f(p[1])).join(' ');
+  function sketch(r) {
+    const xL = 42, xg = 60, yg = 160, gs = 10, SLAB_R = 200, WAIST = 150;
+    const n = r.n, h = r.h, l = r.l, H = r.H;
+    const sc = Math.min(266 / (r.run + l + 450), 124 / Math.max(H, n * h));
+    const PX = (x) => xg + x * sc, PY = (z) => yg - z * sc;
+    const st = [[xg, yg]];
+    for (let i = 1; i <= n; i++) { st.push([PX(r.rx[i]), PY(i * h)]); if (i < n) st.push([PX(r.rx[i + 1]), PY(i * h)]); }
+    const xTop = PX(r.run), yTop = PY(H), xR = Math.min(330, xTop + (l + 450) * sc);
+    st.push([xR, st[st.length - 1][1]]);
+    const slabPx = Math.max(4, S.floor * sc), xOpen = PX(r.xc), yBot = yTop + slabPx;
+    const dvm = WAIST / (l / Math.sqrt(h * h + l * l));
+    const sx = (j, c) => { const s = r.starts[j]; return r.rx[s] + (c - (s - 1) * h + dvm) * l / h; };
+    const soff = [[sx(0, 0), 0]];
+    for (let j = 0; j < r.landings; j++) { const c = (r.starts[j + 1] - 1) * h - WAIST; soff.push([sx(j, c), c], [sx(j + 1, c), c]); }
+    const cTop = n * h - SLAB_R; soff.push([sx(r.landings, cTop), cTop]);
+    const sp = [[xR, PY(cTop)]].concat(soff.slice().reverse().map((q) => [Math.min(xR, PX(q[0])), PY(q[1])]));
+    const zEnd = H - S.hr, prof = r.prof;
+    const hp = [[PX(prof[1][0]), PY(Math.min(prof[1][1] + S.hr, H))]];
+    for (let k = 2; k < prof.length; k++) {
+      const a = prof[k - 1], b = prof[k];
+      if (b[1] <= zEnd) { hp.push([PX(b[0]), PY(b[1] + S.hr)]); continue; }
+      if (a[1] < zEnd) hp.push([PX(a[0] + (zEnd - a[1]) / (b[1] - a[1]) * (b[0] - a[0])), PY(H)]);
+      break;
+    }
+    const hdim = (x1, x2, y) => 'M' + f(x1 - 7) + ' ' + f(y) + ' H' + f(x2 + 7) + ' M' + f(x1 - 4) + ' ' + f(y + 4) + ' L' + f(x1 + 4) + ' ' + f(y - 4) + ' M' + f(x2 - 4) + ' ' + f(y + 4) + ' L' + f(x2 + 4) + ' ' + f(y - 4);
+    const vdim = (x, y1, y2) => 'M' + f(x) + ' ' + f(y1 + 7) + ' V' + f(y2 - 7) + ' M' + f(x - 4) + ' ' + f(y1 + 4) + ' L' + f(x + 4) + ' ' + f(y1 - 4) + ' M' + f(x - 4) + ' ' + f(y2 + 4) + ' L' + f(x + 4) + ' ' + f(y2 - 4);
+    const hy = (yg + yTop) / 2;
+    const openTxt = r.opening >= 1 ? len(r.opening) : L('불필요', 'none');
+    return '<svg viewBox="0 0 334 250" role="img" aria-label="' + L('계단 단면 스케치', 'Stair section sketch') + '">' +
+      '<defs><filter id="rough" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="7" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter></defs>' +
+      '<g filter="url(#rough)" stroke-linecap="round" stroke-linejoin="round" fill="none">' +
+      '<path d="' + pts(st.concat(sp)) + ' Z" fill="var(--mass)" stroke="none"/>' +
+      '<rect x="' + xL + '" y="' + f(yTop) + '" width="' + f(Math.max(0, xOpen - xL)) + '" height="' + f(slabPx) + '" fill="var(--mass)"/>' +
+      '<rect x="' + xL + '" y="' + yg + '" width="' + f(xR - xL) + '" height="' + gs + '" fill="var(--mass)"/>' +
+      '<path d="M' + xL + ' ' + f(yTop) + ' H' + f(xOpen) + ' V' + f(yBot) + ' H' + xL + '" stroke="var(--fg)" stroke-width="1.2"/>' +
+      '<path d="M' + xL + ' ' + yg + ' H' + xg + ' M' + f(PX(soff[0][0])) + ' ' + yg + ' H' + f(xR) + '" stroke="var(--fg)" stroke-width="1.2"/>' +
+      '<path d="' + pts(sp) + '" stroke="var(--fg)" stroke-width="1.2"/>' +
+      '<path d="' + pts(hp) + '" stroke="var(--dash)" stroke-width="1" stroke-dasharray="4 4"/>' +
+      '<path d="' + pts(st) + '" stroke="var(--fg)" stroke-width="1.5"/>' +
+      (r.opening >= 1 ? '<path d="' + hdim(xOpen, xTop, yTop - 10) + '" stroke="var(--fg)" stroke-width="1"/>' : '') +
+      '<path d="' + hdim(xg, xTop, yg + gs + 14) + '" stroke="var(--dim)" stroke-width="0.9"/>' +
+      '<path d="' + vdim(36, yg, yTop) + '" stroke="var(--dim)" stroke-width="0.9"/>' +
+      '</g>' +
+      '<g font-family="Nanum Pen Script, cursive">' +
+      '<text x="' + f(Math.min(285, Math.max(70, (xOpen + xTop) / 2))) + '" y="' + f(yTop - 17) + '" text-anchor="middle" font-size="19" fill="var(--fg)">' + L('개구부 ', 'opening ') + openTxt + '</text>' +
+      '<text x="' + f((xg + xTop) / 2) + '" y="' + f(yg + gs + 34) + '" text-anchor="middle" font-size="18" fill="var(--dim)">' + L('수평 ', 'run ') + len(r.run) + '</text>' +
+      '<text x="24" y="' + f(hy) + '" text-anchor="middle" font-size="18" fill="var(--dim)" transform="rotate(-90 24 ' + f(hy) + ')">' + L('층고 ', 'height ') + len(H) + '</text>' +
+      '<path d="M206 236 H230" stroke="var(--dash)" stroke-width="1" stroke-dasharray="4 4" fill="none"/>' +
+      '<text x="236" y="241" font-size="16" fill="var(--sub)">' + L('유효높이 ', 'headroom ') + len(S.hr) + '</text>' +
+      '</g></svg>';
+  }
+
+  // ---------- 꺾인 계단 단면 (구간별로 자른 두 장, 앱과 같은 좌표) ----------
+  // which = 1: 첫 구간을 자름 (둘째 구간은 너머로 보임) · 2: 둘째 구간을 자름 (첫 구간은 너머로 보임)
+  function turnGeo(r, which) {
+    const h = r.h, l = r.l, H = r.H, n1 = r.n1, n2 = r.n2, A = r.runA, B = r.runB, D = r.turn;
+    const zL = n1 * h, T = 150, dvm = 150 / (l / Math.hypot(h, l)), U = r.shape === 'u';
+    const E = which === 1 ? A : (U ? A : B);
+    const upA = () => { const p = [[0, 0]]; for (let i = 1; i <= n1; i++) { const x = (i - 1) * l; p.push([x, i * h]); if (i < n1) p.push([i * l, i * h]); } return p; };
+    const upB = () => { const p = [[E, zL]]; for (let j = 1; j <= n2; j++) { const x = E - (j - 1) * l; p.push([x, zL + j * h]); if (j < n2) p.push([x - l, zL + j * h]); } return p; };
+    // 둘째 구간 위끝이 위층 바닥에 붙는 곳 (하부선이 아랫면보다 낮으면 끝면에서, 높으면 아랫면에서 만남)
+    const slabBottom = H - S.floor, zJoin = H - h - dvm, thin = slabBottom > zJoin;
+    const xJoin = thin ? E - (slabBottom - zL + dvm) * l / h : E - B;
+    // 하부선은 디딤판 안쪽 모서리를 이은 선에서 두께만큼 떨어뜨림
+    const aSoff = () => { const x0 = dvm * l / h; const x1 = Math.min(A + D, Math.max(x0, (zL - T + dvm) * l / h)); return [[x0, 0], [x1, zL - T]]; };
+    const bSoff = () => { const xb = Math.min(E + D, E + (T - dvm) * l / h); return [[xb, zL - T], [xJoin, thin ? slabBottom : zJoin]]; };
+    const g = { E, D, zL, seen: [], dashed: [], head: null, beyond: [] };
+    if (which === 1) {
+      const prof = upA().concat([[A + D, zL]]), so = aSoff();
+      g.prof = prof; g.poly = prof.concat([[A + D, zL - T], so[1], so[0]]);
+      g.soff = [so[0], so[1], [A + D, zL - T], [A + D, zL]];
+      if (U) { g.seen.push(upB(), bSoff()); }
+      else { for (let j = 1; j <= n2; j++) g.seen.push([[E, zL + j * h], [E + D, zL + j * h]]); g.seen.push([[E, zL], [E, H]], [[E + D, zL], [E + D, H]]); }
+      g.head = [[0, h + S.hr], [A, zL + S.hr], [A + D, zL + S.hr]];
+      g.edge = Math.min(A, Math.max(0, r.xc)); g.run = [0, A];
+      g.slabTo = g.edge; g.edgeFrom = slabBottom; g.edgeTo = H;
+      if (U && E - B > g.edge + 1) {
+        g.beyond = [[[g.edge, H], [E - B, H]], [[g.edge, slabBottom], [xJoin, slabBottom]]];
+        if (!thin) g.beyond.push([[E - B, slabBottom], [E - B, zJoin]]);
+      }
+      g.xMin = U ? Math.min(0, A - B, xJoin) : 0;
+    } else {
+      const prof = [[E + D, zL]].concat(upB()), so = bSoff();
+      g.prof = prof; g.poly = prof.concat(thin ? [[E - B, slabBottom]] : [], [so[1], so[0], [E + D, zL - T]]);
+      g.soff = [[E + D, zL], [E + D, zL - T]].concat(so);
+      if (U) { g.seen.push(upA(), aSoff()); }
+      else { for (let i = 1; i < n1; i++) g.dashed.push([[E, i * h], [E + D, i * h]]); g.dashed.push([[E, 0], [E, zL]], [[E + D, 0], [E + D, zL]]); }
+      g.edge = E - B; g.run = [E - B, E];
+      g.slabTo = xJoin; g.edgeFrom = slabBottom; g.edgeTo = thin ? slabBottom : zJoin;
+      const edgeA = Math.min(A, Math.max(0, r.xc));
+      if (U && edgeA > g.edge + 1) g.beyond = [[[g.edge, H], [edgeA, H]], [[xJoin, slabBottom], [edgeA, slabBottom]], [[edgeA, slabBottom], [edgeA, H]]];
+      g.xMin = Math.min(0, E - B, xJoin);
+    }
+    g.right = E + D; g.open = g.right - g.edge;
+    return g;
+  }
+  function turnSketch(r, which) {
+    const g = turnGeo(r, which), H = r.H;
+    const zTop = Math.max(H, g.head ? g.zL + S.hr : 0);
+    const sc = Math.min(266 / (g.right - g.xMin + 450), 124 / zTop);
+    const xL = 42, xg = 60, yg = 160, gs = 10;
+    const PX = (x) => xg + (x - g.xMin) * sc, PY = (z) => yg - z * sc;
+    const P = (a) => a.map((q) => [PX(q[0]), PY(q[1])]);
+    const xR = Math.min(330, PX(g.right) + 60), yTop = PY(H), slabPx = Math.max(4, S.floor * sc), yBot = yTop + slabPx;
+    const xE = PX(g.edge), xRs = PX(g.right);
+    const hdim = (x1, x2, y) => 'M' + f(x1 - 7) + ' ' + f(y) + ' H' + f(x2 + 7) + ' M' + f(x1 - 4) + ' ' + f(y + 4) + ' L' + f(x1 + 4) + ' ' + f(y - 4) + ' M' + f(x2 - 4) + ' ' + f(y + 4) + ' L' + f(x2 + 4) + ' ' + f(y - 4);
+    const vdim = (x, y1, y2) => 'M' + f(x) + ' ' + f(y1 + 7) + ' V' + f(y2 - 7) + ' M' + f(x - 4) + ' ' + f(y1 + 4) + ' L' + f(x + 4) + ' ' + f(y1 - 4) + ' M' + f(x - 4) + ' ' + f(y2 + 4) + ' L' + f(x + 4) + ' ' + f(y2 - 4);
+    const yOpen = Math.min(yTop, PY(zTop)) - 10, hy = (yg + yTop) / 2;
+    const cap = which === 1 ? L('단면 1 · 첫 구간', 'section 1 · 1st flight') : L('단면 2 · 둘째 구간', 'section 2 · 2nd flight');
+    return '<svg viewBox="0 0 334 250" role="img" aria-label="' + cap + '">' +
+      '<defs><filter id="roughT' + which + '" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="' + (7 + which) + '" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter></defs>' +
+      '<g filter="url(#roughT' + which + ')" stroke-linecap="round" stroke-linejoin="round" fill="none">' +
+      '<rect x="' + xL + '" y="' + yg + '" width="' + f(xR - xL) + '" height="' + gs + '" fill="var(--mass)"/>' +
+      g.seen.concat(g.beyond).map((a) => '<path d="' + pts(P(a)) + '" stroke="var(--faint)" stroke-width="0.9"/>').join('') +
+      g.dashed.map((a) => '<path d="' + pts(P(a)) + '" stroke="var(--faint)" stroke-width="0.9" stroke-dasharray="3 3"/>').join('') +
+      '<path d="' + pts(P(g.poly)) + ' Z" fill="var(--mass)" stroke="none"/>' +
+      '<rect x="' + xL + '" y="' + f(yTop) + '" width="' + f(Math.max(0, xE - xL)) + '" height="' + f(slabPx) + '" fill="var(--mass)"/>' +
+      '<rect x="' + f(xRs) + '" y="' + f(yTop) + '" width="' + f(Math.max(0, xR - xRs)) + '" height="' + f(slabPx) + '" fill="var(--mass)"/>' +
+      // 왼쪽 바닥: 계단이 붙는 부분에는 경계선을 긋지 않음
+      '<path d="M' + xL + ' ' + f(yTop) + ' H' + f(xE) + ' M' + xL + ' ' + f(yBot) + ' H' + f(PX(g.slabTo)) +
+        (g.edgeTo > g.edgeFrom + 1 ? ' M' + f(xE) + ' ' + f(PY(g.edgeTo)) + ' V' + f(PY(g.edgeFrom)) : '') + '" stroke="var(--fg)" stroke-width="1.2"/>' +
+      '<path d="M' + f(xR) + ' ' + f(yTop) + ' H' + f(xRs) + ' V' + f(yBot) + ' H' + f(xR) + '" stroke="var(--fg)" stroke-width="1.2"/>' +
+      '<path d="M' + xL + ' ' + yg + ' H' + f(xR) + '" stroke="var(--fg)" stroke-width="1.2"/>' +
+      '<path d="' + pts(P(g.soff)) + '" stroke="var(--fg)" stroke-width="1.2"/>' +
+      (g.head ? '<path d="' + pts(P(g.head)) + '" stroke="var(--dash)" stroke-width="1" stroke-dasharray="4 4"/>' : '') +
+      '<path d="' + pts(P(g.prof)) + '" stroke="var(--fg)" stroke-width="1.5"/>' +
+      (g.open >= 1 ? '<path d="' + hdim(xE, xRs, yOpen) + '" stroke="var(--fg)" stroke-width="1"/>' : '') +
+      '<path d="' + hdim(PX(g.run[0]), PX(g.run[1]), yg + gs + 14) + '" stroke="var(--dim)" stroke-width="0.9"/>' +
+      '<path d="' + vdim(36, yg, yTop) + '" stroke="var(--dim)" stroke-width="0.9"/>' +
+      '</g>' +
+      '<g font-family="Nanum Pen Script, cursive">' +
+      '<text x="' + f(Math.min(285, Math.max(70, (xE + xRs) / 2))) + '" y="' + f(yOpen - 7) + '" text-anchor="middle" font-size="19" fill="var(--fg)">' + L('개구부 ', 'opening ') + len(g.open) + '</text>' +
+      '<text x="' + f((PX(g.run[0]) + PX(g.run[1])) / 2) + '" y="' + f(yg + gs + 34) + '" text-anchor="middle" font-size="18" fill="var(--dim)">' + L('구간 ', 'flight ') + len(g.run[1] - g.run[0]) + '</text>' +
+      '<text x="24" y="' + f(hy) + '" text-anchor="middle" font-size="18" fill="var(--dim)" transform="rotate(-90 24 ' + f(hy) + ')">' + L('층고 ', 'height ') + len(H) + '</text>' +
+      '<text x="42" y="241" font-size="16" fill="var(--sub)">' + cap + '</text>' +
+      (g.head ? '<path d="M206 236 H230" stroke="var(--dash)" stroke-width="1" stroke-dasharray="4 4" fill="none"/><text x="236" y="241" font-size="16" fill="var(--sub)">' + L('유효높이 ', 'headroom ') + len(S.hr) + '</text>' : '') +
+      '</g></svg>';
+  }
+
+  // ---------- 평면 스케치 (앱과 같은 좌표) ----------
+  function plan(r) {
+    const w = r.w, l = r.tread || r.l, W = r.fW, Lm = r.fL;
+    const box = r.shape === 'straight' ? [40, 50, 262, 150] : [60, 22, 220, 216];
+    const sc = Math.min(box[2] / W, box[3] / Lm);
+    const ox = box[0] + (box[2] - W * sc) / 2, oy = box[1] + (box[3] - Lm * sc) / 2 + Lm * sc;
+    const P = (x, y) => [ox + x * sc, oy - y * sc];
+    const rect = (a, b, c, d) => [P(a, b), P(c, b), P(c, d), P(a, d)];
+    const hd = (x1, x2, y) => [[[x1 - 7, y], [x2 + 7, y]], [[x1 - 4, y + 4], [x1 + 4, y - 4]], [[x2 - 4, y + 4], [x2 + 4, y - 4]]];
+    const vd = (x, y1, y2) => [[[x, y1 + 7], [x, y2 - 7]], [[x - 4, y1 + 4], [x + 4, y1 - 4]], [[x - 4, y2 + 4], [x + 4, y2 - 4]]];
+    const bottom = P(0, 0)[1];
+    let outline = [], lands = [], treads = [], voids = [], dims = [], arrow = [], up, labs = [], wAt, lAt;
+    if (r.shape === 'straight') {
+      outline = rect(0, 0, W, w).concat([P(0, 0)]);
+      for (let i = 1; i <= r.n; i++) {
+        const x = r.rx[i]; treads.push([P(x, 0), P(x, w)]);
+        if (r.after.has(i) && i < r.n) { const x2 = r.rx[i + 1]; lands.push(rect(x, 0, x2, w)); labs.push([P((x + x2) / 2, 0)[0], w * sc >= 44 ? P(0, w / 2)[1] + 15 : P(0, w)[1] - 11]); }
+      }
+      arrow = [P(l * .3, w / 2), P(W - l * .4, w / 2)]; up = [P(l * .3, 0)[0] + 4, P(0, w)[1] - 11];
+      dims = hd(P(0, 0)[0], P(W, 0)[0], bottom + 16).concat(vd(P(0, 0)[0] - 16, bottom, P(0, w)[1]));
+      wAt = [P(W / 2, 0)[0], bottom + 34]; lAt = [P(0, 0)[0] - 29, P(0, w / 2)[1]];
+    } else if (r.shape === 'l') {
+      const A = r.runA, B = r.runB;
+      outline = [P(0, 0), P(W, 0), P(W, Lm), P(A, Lm), P(A, w), P(0, w), P(0, 0)]; lands = [rect(A, 0, W, w)];
+      for (let k = 0; k < r.n1; k++) { const x = k * l; treads.push([P(x, 0), P(x, w)]); }
+      for (let k = 0; k < r.n2; k++) { const y = w + k * l; treads.push([P(A, y), P(W, y)]); }
+      arrow = [P(l * .3, w / 2), P(A + w / 2, w / 2), P(A + w / 2, w + B - l * .4)]; up = [P(0, 0)[0] - 16, P(0, w / 2)[1]];
+      if (w * sc >= 56) labs.push([P(A + w / 2, 0)[0], P(0, w / 2)[1] + 16]);
+      dims = hd(P(0, 0)[0], P(W, 0)[0], bottom + 16).concat(vd(P(W, 0)[0] + 18, bottom, P(0, Lm)[1]));
+      wAt = [P(W / 2, 0)[0], bottom + 34]; lAt = [P(W, 0)[0] + 34, P(0, Lm / 2)[1]];
+    } else {
+      const A = r.runA, B = r.runB, top = Lm - r.turn, xa = w + r.gap;
+      outline = rect(0, 0, W, Lm).concat([P(0, 0)]); lands = [rect(0, top, W, Lm)];
+      for (let k = 0; k < r.n1; k++) { const y = top - A + k * l; treads.push([P(xa, y), P(W, y)]); }
+      for (let k = 0; k < r.n2; k++) { const y = top - k * l; treads.push([P(0, y), P(w, y)]); }
+      treads.push([P(0, top), P(W, top)]); // 계단참 경계: 두 구간 사이 틈까지 끊김 없이
+      voids = r.gap > 0 ? [[P(w, top - B), P(w, top)], [P(xa, top - A), P(xa, top)]] : [[P(w, top - Math.max(A, B)), P(w, top)]];
+      const ya = top - A + l * .3;
+      arrow = [P(xa + w / 2, ya), P(xa + w / 2, top + r.turn / 2), P(w / 2, top + r.turn / 2), P(w / 2, top - B + l * .4)];
+      up = [P(W, 0)[0] + 16, P(0, ya)[1]];
+      labs.push([P(W / 2, 0)[0], r.turn * sc >= 56 ? P(0, top + r.turn / 2)[1] - 11 : P(0, Lm)[1] - 10]);
+      dims = hd(P(0, 0)[0], P(W, 0)[0], bottom + 16).concat(vd(P(0, 0)[0] - 18, bottom, P(0, Lm)[1]));
+      wAt = [P(W / 2, 0)[0], bottom + 34]; lAt = [P(0, 0)[0] - 31, P(0, Lm / 2)[1]];
+    }
+    const many = (a) => a.map(pts).join(' ');
+    const b = arrow[arrow.length - 1], a = arrow[arrow.length - 2], ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    const head = [-1, 1].map((sg) => { const t = ang + Math.PI + sg * Math.PI / 6; return 'M' + f(b[0]) + ' ' + f(b[1]) + ' L' + f(b[0] + 6 * Math.cos(t)) + ' ' + f(b[1] + 6 * Math.sin(t)); }).join(' ');
+    const txt = (p, s, size, fill, rot) => '<text x="' + f(p[0]) + '" y="' + f(p[1]) + '" text-anchor="middle" dominant-baseline="central" font-size="' + size + '" fill="' + fill + '"' + (rot ? ' transform="rotate(-90 ' + f(p[0]) + ' ' + f(p[1]) + ')"' : '') + '>' + s + '</text>';
+    return '<svg viewBox="0 0 334 290" role="img" aria-label="' + L('계단 평면 스케치', 'Stair plan sketch') + '">' +
+      '<defs><filter id="roughP" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="7" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.2" xChannelSelector="R" yChannelSelector="G"/></filter></defs>' +
+      '<g filter="url(#roughP)" fill="none" stroke-linecap="round" stroke-linejoin="round">' +
+      lands.map((q) => '<path d="' + pts(q) + ' Z" fill="var(--mass)" stroke="none"/>').join('') +
+      '<path d="' + many(treads) + '" stroke="var(--fg)" stroke-width="0.9"/>' +
+      (voids.length ? '<path d="' + many(voids) + '" stroke="var(--fg)" stroke-width="1"/>' : '') +
+      '<path d="' + pts(outline) + '" stroke="var(--fg)" stroke-width="1.6"/>' +
+      '<path d="' + many(dims) + '" stroke="var(--dim)" stroke-width="0.9"/>' +
+      '</g>' +
+      '<path d="' + pts(arrow) + ' ' + head + '" fill="none" stroke="var(--fg)" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<circle cx="' + f(arrow[0][0]) + '" cy="' + f(arrow[0][1]) + '" r="2.5" fill="var(--fg)"/>' +
+      '<g font-family="Nanum Pen Script, cursive">' +
+      txt(up, 'UP', 17, 'var(--fg)') +
+      labs.map((p) => txt(p, L('계단참', 'landing'), 16, 'var(--sub)')).join('') +
+      txt(wAt, len(W), 18, 'var(--dim)') + txt(lAt, len(Lm), 18, 'var(--dim)', true) +
+      '</g></svg>';
+  }
+
+  // ---------- 최근 계산 (이 브라우저에만 저장) ----------
+  let recentTimer;
+  function remember(r) {
+    clearTimeout(recentTimer);
+    recentTimer = setTimeout(() => {
+      const turn = r.shape !== 'straight';
+      const item = { H: S.H, floor: S.floor, n: r.n, h: r.h, l: r.l, shape: r.shape, w: r.w, gap: r.shape === 'u' ? r.gap : null, split: turn ? r.n1 - Math.floor((r.n + 1) / 2) : null };
+      const same = (x) => Math.abs(x.H - item.H) < .5 && x.n === item.n && Math.abs(x.l - item.l) < .5 && Math.abs(x.floor - item.floor) < .5
+        && (x.shape || 'straight') === item.shape && Math.abs((x.w || 1200) - item.w) < .5 && (x.split ?? null) === item.split && (x.gap ?? null) === item.gap;
+      S.recent = [item].concat((S.recent || []).filter((x) => !same(x))).slice(0, 10);
+      save(); drawRecent();
+    }, 1500);
+  }
+  function drawRecent() {
+    const box = $('recent');
+    if (!S.recent || !S.recent.length) { box.innerHTML = ''; return; }
+    box.innerHTML = '<h3>' + L('최근 계산 · 이 브라우저에만 저장', 'Recent · saved in this browser only') + '</h3>';
+    S.recent.forEach((x) => {
+      const b = document.createElement('button'); b.type = 'button';
+      const shp = x.shape === 'l' ? L('ㄱ자 · ', 'L · ') : x.shape === 'u' ? L('U자 · ', 'U · ') : '';
+      b.innerHTML = '<span>' + shp + L('층고 ', 'H ') + len(x.H) + ' ' + uName() + L(' · ' + x.n + '단', ' · ' + x.n + ' steps') + '</span><span>' + fine(x.h) + ' / ' + fine(x.l) + '</span>';
+      b.onclick = () => { S.H = x.H; S.floor = x.floor; S.mode = 'manual'; S.nM = x.n; S.lM = x.l;
+        S.shape = x.shape || 'straight'; if (x.w) S.w = x.w; if (x.gap != null) S.gap = x.gap; S.split = x.split || 0; S.view = null; render(); };
+      box.appendChild(b);
+    });
+  }
+
+  // ---------- 화면 ----------
+  function render(typing) {
+    const r = solve();
+    document.documentElement.lang = S.lang;
+    $('eyebrow').textContent = 'DIDIM';
+    $('tagline').textContent = L('편안한 계단을 숫자로.', 'Comfortable stairs, in numbers.');
+    [['calc', L('계산기', 'Calculator')], ['theory', L('이론', 'Theory')], ['codes', L('기준', 'Codes')]].forEach(([k, t]) => {
+      const b = $('tab-' + k); b.textContent = t; b.setAttribute('aria-pressed', String(S.tab === k)); $('v-' + k).hidden = S.tab !== k;
+    });
+    $('unitBtn').textContent = S.imp ? 'inch → mm' : 'mm → inch';
+    $('langBtn').textContent = S.lang === 'ko' ? 'English' : '한국어';
+    $('calcTitle').textContent = L('계산기', 'Calculator');
+    $('m-auto').textContent = L('자동', 'Auto'); $('m-manual').textContent = L('수동', 'Manual');
+    $('m-auto').setAttribute('aria-pressed', String(S.mode === 'auto')); $('m-manual').setAttribute('aria-pressed', String(S.mode === 'manual'));
+    treadHost.hidden = S.mode !== 'manual';
+    gapHost.hidden = S.shape !== 'u';
+    $('widthNote').textContent = L('계단 폭과 계단참 길이는 벽 · 구조체 사이 안목 치수입니다. 난간이나 별도 손잡이를 두면 유효폭은 그 안쪽으로 다시 산정해야 하므로, 설치 여부에 따라 필요한 유효폭보다 큰 값을 입력하십시오.', 'Stair width and landing length are clear dimensions between walls or structure. A handrail or separate grab rail narrows the effective width, so measure it inside the rail and enter a larger value depending on what you install.');
+    llHost.hidden = S.shape === 'l';
+    [['straight', L('직선', 'Straight')], ['l', L('ㄱ자', 'L-shape')], ['u', L('U자', 'U-shape')]].forEach(([k, t]) => {
+      const b = $('s-' + k); b.textContent = t; b.setAttribute('aria-pressed', String(S.shape === k));
+    });
+    const shown = S.view || (S.shape === 'straight' ? 'section' : 'plan');
+    $('gaTitle').textContent = L('iPhone 앱 DIDIM', 'DIDIM for iPhone');
+    $('gaSub').textContent = L('같은 계산을 iPhone에서. 카메라로 QR을 비추거나 눌러서 받으세요.', 'The same calculator on iPhone. Scan the QR code or tap to get it.');
+    $('gaBtn').textContent = L('App Store에서 받기', 'Get it on the App Store');
+    $('saveImg').setAttribute('aria-label', L('스케치 이미지 저장', 'Save sketch image')); $('saveImg').title = L('이미지 저장', 'Save image');
+    $('v-plan-btn').textContent = L('평면', 'Plan'); $('v-sec-btn').textContent = L('단면', 'Section');
+    $('v-plan-btn').setAttribute('aria-pressed', String(shown === 'plan')); $('v-sec-btn').setAttribute('aria-pressed', String(shown === 'section'));
+    adv.hidden = !S.adv;
+    $('advBtn').textContent = S.adv ? L('상세 설정 닫기', 'Hide advanced')
+      : L('상세 설정 · 유효높이 ', 'Advanced · headroom ') + len(S.hr) + L(' · 계단참 ', ' · landing ') + len(S.li) + (S.shape === 'l' ? '' : ' / ' + len(S.ll));
+    rows.forEach((fn) => fn());
+
+    const out = $('out');
+    if (r.err) { out.innerHTML = '<p class="err">' + r.err + '</p>'; $('sketch').innerHTML = ''; }
+    else {
+      const strideOK = r.stride >= STRIDE[0] - .5 && r.stride <= STRIDE[1] + .5;
+      const angOK = r.ang >= ANG[0] && r.ang <= ANG[1];
+      const tr = (k, v, t, cls) => '<tr><td>' + k + '</td><td class="v">' + v + '</td><td class="t ' + (cls || '') + '">' + t + '</td></tr>';
+      const fpKey = L('차지하는 크기', 'Footprint');
+      const fpTag = r.shape === 'u' ? L('폭 × 길이', 'W × L') : r.shape === 'l' ? L('가로 × 세로', 'X × Y') : L('길이 × 폭', 'L × W');
+      out.innerHTML =
+        '<div class="summary"><b>' + L(r.n + '단', r.n + ' steps') + (r.shape === 'straight' ? '' : '<small style="font-size:17px;font-weight:500;letter-spacing:0;margin-left:12px">' + r.n1 + ' + ' + r.n2 + '</small>') + '</b><span>' + L('단높이 ', 'Riser ') + fine(r.h) + L(' · 단너비 ', ' · Tread ') + fine(r.l) + ' ' + uName() + '</span></div>' +
+        '<table><tbody>' +
+        tr('2h + l = ' + (S.imp ? '23.2–25.6' : '590~650') + ' (DIN)', len(r.stride), strideOK ? L('적합', 'OK') : L('부적합', 'Out'), strideOK ? 'ok' : 'bad') +
+        tr('l − h → ' + len(120), len(r.conv), L('차이 ', 'diff ') + sgn(r.conv - 120)) +
+        tr('l + h → ' + len(460), len(r.safe), L('차이 ', 'diff ') + sgn(r.safe - 460)) +
+        tr(L('경사각', 'Pitch'), r.ang.toFixed(1) + '°', angOK ? L('22~45° 안', 'in 22–45°') : L('22~45° 밖', 'outside 22–45°'), angOK ? '' : 'bad') +
+        tr(fpKey, len(r.fW) + ' × ' + len(r.fL), fpTag) +
+        (r.shape === 'straight'
+          ? tr(L('수평 길이', 'Total run'), len(r.run) + ' ' + uName(), r.landings ? L('계단참 ' + r.landings, r.landings + ' landing' + (r.landings > 1 ? 's' : '')) : '')
+          : tr(L('구간 수평 길이', 'Flight runs'), len(r.runA) + ' / ' + len(r.runB), L('첫 / 둘째', '1st / 2nd'))) +
+        (r.over ? tr(L('가장 높은 구간', 'Tallest flight'), len(r.maxRise) + ' ' + uName(), L('계단참 간격 초과', 'over landing limit'), 'bad') : '') +
+        (r.shape === 'straight'
+          ? tr(L('상부 개구부', 'Floor opening'), r.opening >= 1 ? len(r.opening) + ' ' + uName() : L('불필요', 'none'), L('참고', 'ref.'))
+          : tr(L('상부 개구부', 'Floor opening'), len(turnGeo(r, 1).open) + ' / ' + len(turnGeo(r, 2).open), L('단면 1 / 2', 'sec. 1 / 2'))) +
+        '</tbody></table>' +
+        '<p class="note">' + L('2h + l 판정은 DIN 18065 Schrittmaßregel(590~650 mm) 기준이며, l − h · l + h는 목표값과의 차이만 표시합니다. 개구부 길이는 디딤판 코 선과 계단참 바닥에서 유효높이를 확보하는 참고값이며, 계단참 길이는 상세 설정 값(기본 1,200 mm)을 씁니다. ㄱ자 · U자는 첫 구간과 둘째 구간을 각각 자른 단면 두 장으로 보이며, 개구부는 각 단면에서 위층 바닥 끝부터 계단참 끝까지의 길이입니다. ㄱ자 계단참은 계단 폭 × 폭입니다. 크기는 벽 두께를 뺀 안목 치수입니다. 각국 법규 적합 여부는 사용자가 확인해야 합니다.',
+          '2h + l is checked against the DIN 18065 step rule (590–650 mm); l − h and l + h show only the difference from their targets. The opening length keeps the headroom above the nosing line and landings, using the landing length from Advanced (default 1,200 mm). L- and U-shaped stairs are shown as two sections, one through each flight; each opening runs from the upper floor edge to the far end of the landing. The L-shape landing is width × width. Sizes are clear dimensions inside the walls. Always check compliance with your local code.') + '</p>';
+      const two = shown === 'section' && r.shape !== 'straight';
+      $('sketch').className = 'sketch' + (shown === 'plan' ? ' plan' : two ? ' two' : '');
+      $('sketch').innerHTML = shown === 'plan' ? plan(r) : two ? turnSketch(r, 1) + turnSketch(r, 2) : sketch(r);
+      remember(r);
+    }
+    drawRecent();
+    drawTheory(); drawCodes();
+    if (!typing) save(); else save();
+  }
+
+  function drawTheory() {
+    const cards = [
+      [L('편의 규칙', 'Comfort rule'), 'l − h = 120', L('완만한 계단(약 30°)에서 편안함을 기준으로 한 관계식입니다.', 'A relation aimed at comfort on gentle stairs (around 30°).'), L('독일 계단 설계 관행 (Bequemlichkeitsregel)', 'German design practice (Bequemlichkeitsregel)')],
+      [L('안전 규칙', 'Safety rule'), 'l + h = 460', L('내려갈 때 발이 걸리지 않도록 디딤판이 너무 좁아지는 것을 막는 관계식입니다.', 'Keeps treads from becoming too shallow, for safer descent.'), L('독일 계단 설계 관행 (Sicherheitsregel)', 'German design practice (Sicherheitsregel)')],
+      [L('이상적인 비율', 'Ideal ratio'), '170 / 290', L('단높이 170, 단너비 290은 세 규칙을 모두 만족합니다 (2h + l = 630, l − h = 120, l + h = 460). 경사 약 30.4°. 계산기의 자동 모드가 이 비율을 목표로 합니다.', 'A 170 riser with a 290 tread satisfies all three rules (2h + l = 630, l − h = 120, l + h = 460), at about 30.4°. Auto mode aims for this ratio.'), 'Baunetz Wissen, Steigungsverhältnis'],
+      [L('경사각', 'Pitch'), '22° ~ 45°', L('보폭 규칙(2h + l)은 대략 이 경사 범위의 계단에 적용됩니다.', 'The step rule (2h + l) applies to stairs within roughly this pitch range.'), 'DIN 18065 · Baunetz Wissen'],
+      [L('유효높이', 'Headroom'), L('머리 위 여유', 'clear height'), L('디딤판 코 선과 계단참 바닥에서 위층 천장 마감면까지의 연직 높이입니다. 나라마다 기준이 달라 계산기 상세 설정에서 바꿀 수 있습니다.', 'The vertical clearance from the nosing line and landings to the finished ceiling above. It differs by country, so you can change it under Advanced.'), L('기준 탭 참고', 'See the Codes tab')]
+    ];
+    $('v-theory').innerHTML =
+      '<div class="hero"><span class="k">François Blondel · 1675</span><span class="f">2h + l ≈ 648</span>' +
+      '<p>' + L('단높이를 두 배 한 값과 단너비의 합은 일정하게 2 pieds(약 648 mm)여야 한다는 경험식입니다. 단높이 1을 올리면 단너비는 2를 줄입니다.', 'Twice the riser plus the tread should stay constant at 2 pieds (about 648 mm). Each unit of extra rise takes two units off the tread.') + '</p>' +
+      '<span class="k">' + L('원식: 『Cours d’architecture』 1675, 단일값', 'Original: Cours d’architecture, 1675 — a single value') + '</span></div>' +
+      '<div class="card"><div class="h"><b>' + L('오늘의 보폭 규칙', 'The step rule today') + '</b></div>' +
+      '<div class="h"><span style="color:var(--fg)">DIN 18065</span><span>2h + l = 590 ~ 650</span></div>' +
+      '<div class="h"><span style="color:var(--fg)">UK Approved Document K</span><span>2R + G = 550 ~ 700</span></div>' +
+      '<span class="src">' + L('계산기의 2h + l 판정은 DIN 18065 범위를 씁니다. 단위 mm.', 'The calculator checks 2h + l against the DIN 18065 range. Units: mm.') + '</span></div>' +
+      cards.map((c) => '<div class="card"><div class="h"><b>' + c[0] + '</b><span>' + c[1] + '</span></div><p>' + c[2] + '</p><span class="src">' + c[3] + '</span></div>').join('');
+  }
+
+  function drawCodes() {
+    const codes = [
+      [L('독일 DIN 18065', 'Germany · DIN 18065'), '6.1.2', '—', '—', L('2h + l = 590~650 · 허용오차 ±5', '2h + l = 590–650 · tolerance ±5')],
+      [L('영국 Approved Document K', 'UK · Approved Document K'), '1.3–1.5', L('용도별 135~220', '135–220 by use'), L('용도별 220~340', '220–340 by use'), L('2R + G = 550~700 · 주거 계단 ≤ 42°', '2R + G = 550–700 · private stairs ≤ 42°')],
+      [L('미국 IRC (주거)', 'US · IRC (residential)'), 'R311.7.5', '≤ 197 (7¾ in)', '≥ 254 (10 in)', L('한 경간 안 편차 ≤ 10 (⅜ in)', 'variation in a flight ≤ 10 (⅜ in)')],
+      [L('미국 IBC (일반)', 'US · IBC (general)'), '1011.5', '102~178 (4–7 in)', '≥ 279 (11 in)', L('원문 확인 중', 'being verified')],
+      [L('한국 건축법', 'Korea · Building Act'), L('피난·방화규칙 15조', 'Fire/Evacuation Rules Art. 15'), L('용도별 ≤ 160~180', '≤ 160–180 by use'), L('용도별 ≥ 260', '≥ 260 by use'), L('높이 3 m마다 계단참 · 유효높이 2.1 m', 'landing every 3 m rise · headroom 2.1 m')]
+    ];
+    $('v-codes').innerHTML =
+      '<p class="note" style="font-size:13px">' + L('주요 국가의 계단 치수 기준입니다. 판정에는 쓰지 않으며, 설계 시 각국 원문을 확인하십시오. 단위 mm.', 'Stair dimensions from major codes, for reference only. They are not used for checks. Always consult the original text. Units: mm.') + '</p>' +
+      codes.map((c) => '<div class="card code"><div class="h"><b>' + c[0] + '</b><span class="src">' + c[1] + '</span></div><dl><dt>' + L('단높이', 'Riser') + '</dt><dd>' + c[2] + '</dd><dt>' + L('단너비', 'Tread') + '</dt><dd>' + c[3] + '</dd><dt>' + L('기타', 'Other') + '</dt><dd>' + c[4] + '</dd></dl></div>').join('') +
+      '<p class="note">' + L('기준일 2026.11 · 참고용 정보이며 각국 법규 적합 여부는 사용자가 확인해야 합니다.', 'As of Nov 2026 · For reference only. Check compliance with your local code.') + '</p>';
+  }
+
+  // ---------- 이미지 저장 (지금 보이는 스케치를 PNG로) ----------
+  const HAND_FONT = 'data:font/ttf;base64,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';
+  const LIGHT = { bg: '#FFFFFF', fg: '#111111', sub: '#6B6B6B', faint: '#9A9A9A', line: '#E5E5E5', hair: '#F0F0F0', input: '#F1F1EF', mass: '#EDEDED', dash: '#8A8A8A', dim: '#555555', bad: '#B3261E', onfg: '#FFFFFF' };
+  function svgToImage(svg, w, h) {
+    // 화면 색 변수는 밝은 색으로 바꾸고 손글씨 글꼴을 넣어 그림 파일 안에서도 같은 모양이 되게 함
+    let txt = new XMLSerializer().serializeToString(svg).replace(/var\(--([a-z]+)\)/g, (m, k) => LIGHT[k] || '#111111');
+    txt = txt.replace(/<svg([^>]*)>/, (m, a) => '<svg' + a.replace(/ width="[^"]*"| height="[^"]*"/g, '') + ' width="' + w + '" height="' + h + '"><style>@font-face{font-family:"Nanum Pen Script";src:url(' + HAND_FONT + ')}</style>');
+    if (!/xmlns=/.test(txt)) txt = txt.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+    return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(txt); });
+  }
+  async function sketchPng() {
+    const svgs = [...$('sketch').querySelectorAll('svg')], k = 3, W = 334 * k, pad = 20 * k;
+    const ims = [];
+    for (const sv of svgs) { const vb = sv.viewBox.baseVal; const h = Math.round(W * vb.height / vb.width); ims.push([await svgToImage(sv, W, h), h]); }
+    const head = 30 * k, H = pad * 2 + head + ims.reduce((a, x) => a + x[1], 0) + (ims.length - 1) * 8 * k;
+    const cv = document.createElement('canvas'); cv.width = W + pad * 2; cv.height = H;
+    const c = cv.getContext('2d'); c.fillStyle = '#FFFFFF'; c.fillRect(0, 0, cv.width, cv.height);
+    c.fillStyle = '#111111'; c.font = (13 * k) + 'px "Noto Sans KR", sans-serif';
+    const r = solve(); const shp = { straight: L('직선', 'Straight'), l: L('ㄱ자', 'L-shape'), u: L('U자', 'U-shape') }[S.shape];
+    c.fillText(shp + ' · ' + L('층고 ', 'H ') + len(S.H) + ' · ' + L(r.n + '단', r.n + ' steps') + ' · ' + fine(r.h) + ' / ' + fine(r.l) + ' ' + uName(), pad, pad + 14 * k);
+    let y = pad + head;
+    for (const [im, h] of ims) { c.drawImage(im, pad, y, W, h); y += h + 8 * k; }
+    return await new Promise((res) => cv.toBlob(res, 'image/png'));
+  }
+  let downloads = null;
+  (async () => {
+    try { downloads = window.claude && window.claude.use ? await window.claude.use('downloads') : null; } catch (e) { downloads = null; }
+    // Claude 화면이 아닌 일반 웹페이지에서는 브라우저가 바로 저장
+    if (!downloads && !window.claude) downloads = { save: async ({ filename, data }) => { const a = document.createElement('a'); a.href = URL.createObjectURL(data); a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); } };
+    $('saveImg').hidden = !downloads;
+  })();
+  $('saveImg').onclick = async () => {
+    if (!downloads) return;
+    const b = $('saveImg'); b.disabled = true;
+    try {
+      const blob = await sketchPng();
+      const kind = $('sketch').classList.contains('plan') ? L('평면', 'plan') : L('단면', 'section');
+      await downloads.save({ filename: 'DIDIM-' + kind + '.png', data: blob });
+    } catch (e) { /* 저장을 취소했거나 이 화면에서 쓸 수 없음 */ }
+    b.disabled = false;
+  };
+
+  // ---------- 버튼 ----------
+  ['calc', 'theory', 'codes'].forEach((k) => { $('tab-' + k).onclick = () => { S.tab = k; render(); }; });
+  $('m-auto').onclick = () => { S.mode = 'auto'; render(); };
+  $('m-manual').onclick = () => { if (S.mode !== 'manual') { const r = solve(); if (!r.err) { S.nM = r.n; S.lM = r.l; } S.mode = 'manual'; } render(); };
+  ['straight', 'l', 'u'].forEach((k) => { $('s-' + k).onclick = () => { if (S.shape !== k) { S.shape = k; S.split = 0; S.view = null; } render(); }; });
+  $('v-plan-btn').onclick = () => { S.view = 'plan'; render(); };
+  $('v-sec-btn').onclick = () => { S.view = 'section'; render(); };
+  $('advBtn').onclick = () => { S.adv = !S.adv; render(); };
+  $('unitBtn').onclick = () => { S.imp = !S.imp; render(); };
+  $('langBtn').onclick = () => { S.lang = S.lang === 'ko' ? 'en' : 'ko'; render(); };
+
+  render();
+})();
+</script>
+
+</body>
+</html>
